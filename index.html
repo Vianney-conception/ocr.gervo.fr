@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR Gervo | Reconnaissance de texte moderne & privée</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="img/logo.png" rel=icon type=image/png>
+    <link href="css/tailwindcss.css" rel="stylesheet">
+    <script src="js/tailxindcss.js"></script>
+    <script src="js/icone.js"></script>
+    <script src='js/tesseract.js'></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#145814',
+                        secondary: '#1e293b',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        .custom-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+        }
+        .page { display: none; }
+        .page.active { display: block; }
+        .ocr-box {
+            position: absolute;
+            background: rgba(20, 88, 20, 0.1);
+            border: 1px solid rgba(20, 88, 20, 0.3);
+            border-radius: 2px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .ocr-box:hover {
+            background: rgba(20, 88, 20, 0.3);
+            border-color: #145814;
+            z-index: 10;
+        }
+        .ocr-box::after {
+            content: attr(data-text);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1e293b;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        .ocr-box:hover::after { opacity: 1; }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .animate-spin-custom { animation: spin 1s linear infinite; }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <div class="min-h-screen flex flex-col">
+        <header class="bg-white border-b border-slate-200 py-4 px-6 sticky top-0 z-20">
+            <div class="max-w-6xl mx-auto flex justify-between items-center">
+                <a href="#" onclick="showPage('home')" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
+                    <div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white">
+                        <i data-lucide="scan-text" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold tracking-tight leading-none">OCR Gervo</h1>
+                        <p class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mt-1">Reconnaissance locale • 100% Privé • Open Source</p>
+                    </div>
+                </a>
+            </div>
+        </header>
+        <main id="page-home" class="page active flex-grow max-w-6xl mx-auto w-full p-4 md:p-8">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <div class="lg:col-span-8 space-y-6">
+                    <section class="bg-white rounded-2xl border border-slate-200 custom-shadow overflow-hidden">
+                        <div class="p-6 border-b border-slate-50 flex items-center gap-2">
+                            <span class="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-bold">1</span>
+                            <h2 class="font-bold text-slate-700">Document à analyser</h2>
+                        </div>
+                        <div class="p-6">
+                            <div id="dropZoneContainer">
+                                <div id="dropZone" class="group border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center transition-all hover:border-primary/60 hover:bg-green-50/30 cursor-pointer relative">
+                                    <input type="file" id="fileInput" class="hidden" accept="image/*">
+                                    <div class="w-16 h-16 bg-green-50 text-primary rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                                        <i data-lucide="image-plus" class="w-8 h-8"></i>
+                                    </div>
+                                    <p class="text-lg font-medium text-slate-700">Cliquez ou glissez une image ici</p>
+                                    <p class="text-sm text-slate-400 mt-1">PNG, JPG ou WEBP jusqu'à 10 Mo</p>
+                                </div>
+                            </div>
+                            <div id="interactivePreviewContainer" class="hidden flex flex-col items-center">
+                                <div class="relative inline-block max-w-full bg-slate-50 rounded-xl overflow-hidden border border-slate-100 p-1">
+                                    <img id="imagePreview" src="" alt="Aperçu" class="max-w-full h-auto block rounded-lg">
+                                    <div id="overlayContainer" class="absolute inset-0"></div>
+                                </div>
+                                <div class="mt-4 flex flex-col items-center gap-2">
+                                    <button id="resetBtn" class="flex items-center gap-2 px-5 py-2.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl text-xs font-bold transition-all transform active:scale-95">
+                                        <i data-lucide="refresh-cw" class="w-4 h-4"></i> Changer d'image
+                                    </button>
+                                    <p class="text-[10px] text-slate-400 italic">L'aperçu interactif s'activera après l'extraction.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="bg-white rounded-2xl border border-slate-200 custom-shadow overflow-hidden">
+                        <div class="p-6 border-b border-slate-50 flex items-center gap-2">
+                            <span class="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-bold">2</span>
+                            <h2 class="font-bold text-slate-700">Paramètres & Analyse</h2>
+                        </div>
+                        <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-2">Langue du document</label>
+                                <select id="languageSelect" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all cursor-pointer">
+                                    <option value="fra">Français</option>
+                                    <option value="eng">Anglais</option>
+                                    <option value="spa">Espagnol</option>
+                                    <option value="deu">Allemand</option>
+                                </select>
+                            </div>
+                            <div class="flex flex-col justify-end">
+                                <button id="analyzeBtn" class="w-full py-3.5 bg-primary hover:bg-green-900 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-100 disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-[0.98]">
+                                    <i data-lucide="zap" class="w-5 h-5"></i> Extraire le texte
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+                    <section id="resultArea" class="hidden bg-white rounded-2xl border border-slate-200 custom-shadow overflow-hidden">
+                        <div class="p-6 border-b border-slate-50 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-bold">3</span>
+                                <h2 class="font-bold text-slate-700">Texte extrait</h2>
+                            </div>
+                            <button id="copyBtn" class="flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-colors">
+                                <i data-lucide="copy" class="w-4 h-4"></i> Copier tout
+                            </button>
+                        </div>
+                        <div class="p-6">
+                            <div id="resultText" class="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 min-h-[200px] max-h-[500px] overflow-y-auto whitespace-pre-wrap text-sm text-slate-700 leading-relaxed focus:outline-none" contenteditable="true"></div>
+                        </div>
+                    </section>
+
+                </div>
+                <div class="lg:col-span-4 space-y-6">
+                    <div id="statusCard" class="bg-white p-6 rounded-2xl border border-slate-200 custom-shadow">
+                        <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4 text-center">Statut</h3>
+                        <div id="progressContainer" class="hidden mb-4 bg-slate-50 rounded-xl p-4 border border-slate-100">
+                            <div class="flex justify-between mb-2">
+                                <span id="statusLabel" class="text-[10px] font-bold text-primary uppercase tracking-tight">Analyse...</span>
+                                <span id="progressPercent" class="text-[10px] font-black text-primary">0%</span>
+                            </div>
+                            <div class="w-full bg-slate-200 rounded-full h-1.5">
+                                <div id="progressBar" class="bg-primary h-1.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                            <div class="flex gap-3 items-start">
+                                <div class="mt-0.5 p-1 bg-blue-600 rounded-full flex-shrink-0">
+                                    <i data-lucide="info" class="w-3 h-3 text-white"></i>
+                                </div>
+                                <div class="text-left">
+                                    <p class="text-xs font-bold text-blue-800 uppercase tracking-tight">Conseil</p>
+                                    <p class="text-[11px] text-blue-700 leading-snug mt-0.5">Une fois l'analyse terminée, cliquez sur les mots dans l'image pour les copier instantanément.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 custom-shadow space-y-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-lg bg-green-50 text-primary flex items-center justify-center">
+                                <i data-lucide="shield-check" class="w-5 h-5"></i>
+                            </div>
+                            <p class="text-xs font-bold text-slate-700">Traitement Local</p>
+                        </div>
+                        <p class="text-[11px] text-slate-500">Aucune donnée n'est stockée sur nos serveurs. L'analyse se déroule entièrement dans votre navigateur.</p>
+                    </div>
+                </div>
+            </div>
+            <section class="mt-16 border-t border-slate-200 pt-12 mb-8">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="p-6 bg-white rounded-2xl border border-slate-200 custom-shadow">
+                        <div class="w-10 h-10 bg-green-50 text-green-600 rounded-lg flex items-center justify-center mb-4">
+                            <i data-lucide="lock" class="w-6 h-6"></i>
+                        </div>
+                        <p class="font-bold text-slate-800 mb-1 text-sm">Privé & Sécurisé</p>
+                        <p class="text-slate-500 text-[11px] leading-relaxed">Conformité RGPD native : vos documents ne quittent jamais votre ordinateur.</p>
+                    </div>
+                    <div class="p-6 bg-white rounded-2xl border border-slate-200 custom-shadow">
+                        <div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center mb-4">
+                            <i data-lucide="zap" class="w-6 h-6"></i>
+                        </div>
+                        <p class="font-bold text-slate-800 mb-1 text-sm">Rapide & Gratuit</p>
+                        <p class="text-slate-500 text-[11px] leading-relaxed">Pas d'abonnement, pas de limites. Utilisez la puissance de l'OCR Tesseract librement.</p>
+                    </div>
+                    <div class="p-6 bg-white rounded-2xl border border-slate-200 custom-shadow">
+                        <div class="w-10 h-10 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center mb-4">
+                            <i data-lucide="layout-template" class="w-6 h-6"></i>
+                        </div>
+                        <p class="font-bold text-slate-800 mb-1 text-sm">Précision Maximale</p>
+                        <p class="text-slate-500 text-[11px] leading-relaxed">Support multi-langue et détection intelligente de la structure du texte.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+        <main id="page-legal" class="page flex-grow max-w-4xl mx-auto w-full p-4 md:p-8">
+            <div class="bg-white p-8 md:p-12 rounded-2xl border border-slate-200 custom-shadow">
+                <button onclick="showPage('home')" class="mb-8 text-sm font-medium text-primary flex items-center gap-2 hover:underline">
+                    <i data-lucide="chevron-left" class="w-4 h-4"></i> Retour à l'outil
+                </button>
+                <h2 class="text-3xl font-bold mb-8">Mentions Légales</h2>
+                <div class="space-y-8 text-slate-600 text-sm leading-relaxed">
+                    <section><h3 class="font-semibold text-slate-700 mb-3 text-xl">1. Édition du site</h3><p class="text-sm leading-relaxed text-slate-600">Le présent site est édité par <strong>Vianney Pacaud (SIRET: 98957453800017)</strong>.<br>Directeur de la publication : Vianney Pacaud.<br>Contact : <a class="text-[#145814] hover:underline" href="mailto:contact@vianneypacaud.fr">contact@vianneypacaud.fr</a></p></section>
+                    <section><h3 class="font-semibold text-slate-700 mb-3 text-xl">2. Hébergement</h3><p class="text-sm leading-relaxed text-slate-600">L'hébergement du site est assuré par <strong>O2Switch</strong> (Clermont-Ferrand, France).</p></section>
+                    <section><h3 class="font-semibold text-slate-700 mb-3 text-xl">3. Propriété intellectuelle</h3><p class="text-sm leading-relaxed text-slate-600">La reproduction totale ou partielle de ce site est autorisée.<br>Ce site utilise Tesseract.js (moteur OCR), Tailwind CSS (framework de style), Lucide Icons (icônes) et Google Fonts pour la police de caractère Inter.</p></section>
+                    <section><h3 class="font-semibold text-slate-700 mb-3 text-xl">4. Protection des données (RGPD)</h3><p class="text-sm leading-relaxed text-slate-600">Ce site fonctionne localement. Aucune donnée saisie n'est stockée sur nos serveurs.</p></section>
+                </div>
+            </div>
+        </main>
+        <footer class="bg-white border-t border-slate-200 py-8 px-6 mt-auto">
+            <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+                <div class="flex items-center gap-2 opacity-60">
+                    <div class="w-6 h-6 bg-slate-400 rounded flex items-center justify-center text-white">
+                        <i data-lucide="scan-text" class="w-3 h-3"></i>
+                    </div>
+                    <span class="text-sm font-medium">OCR Gervo — <span id="year"></span></span>
+                </div>
+                <nav class="flex gap-6">
+                    <button onclick="showPage('home')" class="text-sm text-slate-500 hover:text-primary transition-colors">OCR</button>
+                    <button onclick="showPage('legal')" class="text-sm text-slate-500 hover:text-primary transition-colors">Mentions Légales</button>
+                </nav>
+            </div>
+        </footer>
+    </div>
+    <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-secondary text-white px-6 py-3 rounded-xl shadow-2xl transition-all duration-500 opacity-0 translate-y-10 flex items-center gap-3 pointer-events-none z-50">
+        <i id="toastIcon" data-lucide="check-circle" class="w-5 h-5 text-green-400"></i>
+        <span id="toastMessage" class="text-sm font-medium">Copié !</span>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        document.getElementById('year').textContent = new Date().getFullYear();
+        const dropZoneContainer = document.getElementById('dropZoneContainer');
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const interactivePreviewContainer = document.getElementById('interactivePreviewContainer');
+        const imagePreview = document.getElementById('imagePreview');
+        const overlayContainer = document.getElementById('overlayContainer');
+        const resetBtn = document.getElementById('resetBtn');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressPercent = document.getElementById('progressPercent');
+        const statusLabel = document.getElementById('statusLabel');
+        
+        const resultArea = document.getElementById('resultArea');
+        const resultText = document.getElementById('resultText');
+        const copyBtn = document.getElementById('copyBtn');
+        const languageSelect = document.getElementById('languageSelect');
+        const toast = document.getElementById('toast');
+
+        let currentOCRData = null;
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById('page-' + pageId).classList.add('active');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('bg-green-50', 'border-primary');
+        });
+
+        ['dragleave', 'dragend'].forEach(type => {
+            dropZone.addEventListener(type, () => dropZone.classList.remove('bg-green-50', 'border-primary'));
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('bg-green-50', 'border-primary');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        });
+
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showToast("Veuillez sélectionner une image valide.", "error");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => {
+                imagePreview.src = reader.result;
+                dropZoneContainer.classList.add('hidden');
+                interactivePreviewContainer.classList.remove('hidden');
+                overlayContainer.innerHTML = '';
+                resultArea.classList.add('hidden');
+                currentOCRData = null;
+            };
+        }
+        resetBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fileInput.value = '';
+            dropZoneContainer.classList.remove('hidden');
+            interactivePreviewContainer.classList.add('hidden');
+            resultArea.classList.add('hidden');
+            progressContainer.classList.add('hidden');
+            overlayContainer.innerHTML = '';
+            currentOCRData = null;
+        });
+
+        analyzeBtn.addEventListener('click', async () => {
+            if (!imagePreview.src || imagePreview.src === window.location.href) {
+                showToast("Veuillez d'abord choisir une image.", "error");
+                return;
+            }
+            processImage(imagePreview.src);
+        });
+
+        async function processImage(imageSource) {
+            analyzeBtn.disabled = true;
+            progressContainer.classList.remove('hidden');
+            resultArea.classList.add('hidden');
+            overlayContainer.innerHTML = '';
+            
+            const lang = languageSelect.value;
+            
+            try {
+                const worker = await Tesseract.createWorker(lang, 1, {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            const prog = Math.round(m.progress * 100);
+                            progressBar.style.width = prog + '%';
+                            progressPercent.textContent = prog + '%';
+                            statusLabel.textContent = "Reconnaissance...";
+                        } else {
+                            statusLabel.textContent = "Chargement...";
+                        }
+                    }
+                });
+
+                const { data } = await worker.recognize(imageSource);
+                await worker.terminate();
+
+                currentOCRData = data;
+                renderInteractiveLayer(data);
+                
+                resultText.textContent = data.text.trim() || "Aucun texte détecté.";
+                
+                progressContainer.classList.add('hidden');
+                resultArea.classList.remove('hidden');
+                analyzeBtn.disabled = false;
+                showToast("Analyse terminée !");
+
+            } catch (error) {
+                console.error(error);
+                showToast("Erreur lors de l'analyse.", "error");
+                analyzeBtn.disabled = false;
+                progressContainer.classList.add('hidden');
+            }
+        }
+
+        function renderInteractiveLayer(data) {
+            if (!data) return;
+            overlayContainer.innerHTML = '';
+            
+            const imgWidth = imagePreview.clientWidth;
+            const imgHeight = imagePreview.clientHeight;
+            const natWidth = imagePreview.naturalWidth;
+            const natHeight = imagePreview.naturalHeight;
+            
+            const scaleX = imgWidth / natWidth;
+            const scaleY = imgHeight / natHeight;
+
+            data.words.forEach(word => {
+                const box = document.createElement('div');
+                box.className = 'ocr-box';
+                box.setAttribute('data-text', word.text);
+                
+                box.style.left = (word.bbox.x0 * scaleX) + 'px';
+                box.style.top = (word.bbox.y0 * scaleY) + 'px';
+                box.style.width = ((word.bbox.x1 - word.bbox.x0) * scaleX) + 'px';
+                box.style.height = ((word.bbox.y1 - word.bbox.y0) * scaleY) + 'px';
+                
+                box.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    copyToClipboard(word.text);
+                    showToast(`"${word.text}" copié !`);
+                });
+                
+                overlayContainer.appendChild(box);
+            });
+        }
+
+        window.addEventListener('resize', () => {
+            if (currentOCRData) renderInteractiveLayer(currentOCRData);
+        });
+        function copyToClipboard(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+        }
+
+        copyBtn.addEventListener('click', () => {
+            const textToCopy = resultText.innerText || resultText.textContent;
+            if (textToCopy.trim() !== "") {
+                copyToClipboard(textToCopy);
+                showToast("Texte intégral copié !");
+            }
+        });
+
+        function showToast(message, type = "success") {
+            const msgEl = document.getElementById('toastMessage');
+            const iconEl = document.getElementById('toastIcon');
+            msgEl.textContent = message;
+            
+            if (type === "error") {
+                iconEl.setAttribute('data-lucide', 'alert-circle');
+                iconEl.classList.replace('text-green-400', 'text-red-400');
+            } else {
+                iconEl.setAttribute('data-lucide', 'check-circle');
+                iconEl.classList.replace('text-red-400', 'text-green-400');
+            }
+            lucide.createIcons();
+            
+            toast.classList.replace('opacity-0', 'opacity-100');
+            toast.classList.replace('translate-y-10', 'translate-y-0');
+            
+            setTimeout(() => {
+                toast.classList.replace('opacity-100', 'opacity-0');
+                toast.classList.replace('translate-y-0', 'translate-y-10');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
